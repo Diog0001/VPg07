@@ -13,6 +13,7 @@ from bot.context import (
     MEMORY_RETRIEVAL_TOP_K,
     assistant,
 )
+from bot.document_focus import get_active_file
 from bot.handlers import memory_store
 from bot.messaging import maybe_send_dog_photo, send_long_message
 from bot.session import append_session, get_session
@@ -43,6 +44,7 @@ def register(bot: telebot.TeleBot) -> None:
                 memory_kinds=MEMORY_KINDS_FOR_CONTEXT,
                 memory_top_k=MEMORY_RETRIEVAL_TOP_K,
                 document_top_k=DOCUMENT_RETRIEVAL_TOP_K,
+                active_file_name=get_active_file(user_id),
             )
 
             memory_store.save_to_memory(message, reply, kind="assistant_message")

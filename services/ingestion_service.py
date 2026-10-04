@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from components.memory_service import HaystackUserMemory
-from pipelines.ingestion import IngestionPipeline, IngestionResult
+from pipelines.ingestion import IngestionPipeline, IngestionResult, ProgressCallback
 from pipelines.summarization import SummarizationPipeline
 
 
@@ -28,6 +28,7 @@ class IngestionService:
         user_id: int,
         chat_id: int,
         extra_meta: dict[str, Any] | None = None,
+        progress: ProgressCallback | None = None,
     ) -> tuple[IngestionResult, str]:
         result = self._get_ingestion().run(
             file_bytes=file_bytes,
@@ -35,6 +36,7 @@ class IngestionService:
             user_id=user_id,
             chat_id=chat_id,
             extra_meta=extra_meta,
+            progress=progress,
         )
         summary = self._summarizer.summarize_chunks(result.enriched_documents)
         return result, summary

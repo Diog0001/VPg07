@@ -21,7 +21,8 @@ AGENT_SYSTEM_PROMPT = """\
 Ты дружелюбный персональный помощник в Telegram.
 Отвечай по-русски, естественно продолжай диалог и опирайся на историю сообщений в этом чате.
 В блоке «Память о пользователе» — факты из прошлых разговоров (векторный поиск, косинусное сходство).
-В блоке «Фрагменты документов» — релевантные куски файлов, которые пользователь загружал (PDF, DOCX и т.д.).
+В блоке «Фрагменты документов» — куски **активного** файла пользователя (последний загруженный или выбранный через /files).
+Отвечай только по этому файлу, если пользователь не просит явно другой.
 Не выдумывай факты о пользователе и содержании файлов, которых нет в контексте. Если данных мало — уточни вопрос.
 
 Инструменты (используй по запросу):
@@ -141,6 +142,7 @@ class PersonalAssistant:
         memory_kinds: frozenset[str],
         memory_top_k: int,
         document_top_k: int | None = None,
+        active_file_name: str | None = None,
     ) -> str:
         memory_docs = self.memory.retrieve_relevant(
             user_id,
@@ -153,10 +155,18 @@ class PersonalAssistant:
             user_id=user_id,
             query=user_text,
             top_k=doc_k,
+            file_name=active_file_name,
         )
 
         memory_block = format_memory_block(memory_docs)
-        document_block = format_document_block(doc_docs)
+        if active_file_name:
+            document_block = format_document_block(doc_docs)
+            if document_block.startswith("Фрагменты документов:"):
+                document_block = (
+                    f"Активный файл: {active_file_name}\n{document_block}"
+                )
+        else:
+            document_block = format_document_block(doc_docs)
         context_block = f"{memory_block}\n\n{document_block}"
 
         messages = [

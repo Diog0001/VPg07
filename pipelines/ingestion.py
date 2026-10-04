@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,8 @@ from haystack_integrations.document_stores.pinecone import PineconeDocumentStore
 from components.docling_factory import create_document_converter, write_upload_temp_file
 from components.document_meta_enricher import DocumentMetaEnricher
 from config import load_project_env
+
+ProgressCallback = Callable[[str, float], None]
 
 
 @dataclass
@@ -33,6 +36,7 @@ class IngestionPipeline:
         embedding_dimensions: int | None = None,
     ) -> None:
         load_project_env()
+        self._document_store = document_store
         self._embedding_model = embedding_model or os.getenv(
             "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
         )
@@ -43,6 +47,7 @@ class IngestionPipeline:
         embedder_kwargs: dict[str, Any] = {"model": self._embedding_model}
         if dims is not None:
             embedder_kwargs["dimensions"] = dims
+        self._embedder_kwargs = embedder_kwargs
 
         try:
             from docling.chunking import HybridChunker
@@ -66,15 +71,20 @@ class IngestionPipeline:
             chunker=HybridChunker(tokenizer=chunk_tokenizer),
         )
 
-        self._pipeline = Pipeline()
-        self._pipeline.add_component("converter", converter)
-        self._pipeline.add_component("enricher", DocumentMetaEnricher())
-        self._pipeline.add_component("embedder", OpenAIDocumentEmbedder(**embedder_kwargs))
-        self._pipeline.add_component(
-            "writer",
-            DocumentWriter(document_store=document_store, policy=DuplicatePolicy.OVERWRITE),
+        self._converter = converter
+        self._enricher = DocumentMetaEnricher()
+        self._embedder = OpenAIDocumentEmbedder(**embedder_kwargs)
+        self._writer = DocumentWriter(
+            document_store=document_store,
+            policy=DuplicatePolicy.OVERWRITE,
         )
 
+        # Сериализованный пайплайн — для совместимости и возможного расширения
+        self._pipeline = Pipeline()
+        self._pipeline.add_component("converter", converter)
+        self._pipeline.add_component("enricher", self._enricher)
+        self._pipeline.add_component("embedder", self._embedder)
+        self._pipeline.add_component("writer", self._writer)
         self._pipeline.connect("converter.documents", "enricher.documents")
         self._pipeline.connect("enricher.documents", "embedder.documents")
         self._pipeline.connect("embedder.documents", "writer.documents")
@@ -87,28 +97,43 @@ class IngestionPipeline:
         user_id: int,
         chat_id: int,
         extra_meta: dict[str, Any] | None = None,
+        progress: ProgressCallback | None = None,
     ) -> IngestionResult:
         temp_path = write_upload_temp_file(file_bytes, file_name)
+
+        def report(label: str, ratio: float) -> None:
+            if progress is not None:
+                progress(label, ratio)
+
         try:
-            result = self._pipeline.run(
-                {
-                    "converter": {"sources": [str(temp_path)]},
-                    "enricher": {
-                        "user_id": str(user_id),
-                        "file_name": file_name,
-                        "chat_id": str(chat_id),
-                        "extra_meta": extra_meta or {},
-                    },
-                }
+            report("Разбор документа (Docling)…", 0.12)
+            conv_out = self._converter.run(sources=[str(temp_path)])
+            raw_documents = list(conv_out.get("documents") or [])
+
+            report("Подготовка фрагментов и метаданных…", 0.42)
+            enrich_out = self._enricher.run(
+                documents=raw_documents,
+                user_id=str(user_id),
+                file_name=file_name,
+                chat_id=str(chat_id),
+                extra_meta=extra_meta or {},
             )
+            enriched = list(enrich_out.get("documents") or [])
+
+            report("Создание эмбеддингов…", 0.68)
+            embed_out = self._embedder.run(documents=enriched)
+            embedded = list(embed_out.get("documents") or [])
+
+            report("Сохранение в Pinecone…", 0.88)
+            write_out = self._writer.run(documents=embedded)
+            written = int(write_out.get("documents_written") or 0)
+            report("Готово", 1.0)
         finally:
             try:
                 temp_path.unlink(missing_ok=True)
             except OSError:
                 pass
 
-        written = int(result.get("writer", {}).get("documents_written") or 0)
-        enriched = list(result.get("enricher", {}).get("documents") or [])
         return IngestionResult(
             documents_written=written,
             enriched_documents=enriched,

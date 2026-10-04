@@ -35,14 +35,19 @@ class SummarizationPipeline:
         self._pipeline.connect("prompt_builder.prompt", "prompt_to_messages.prompt")
         self._pipeline.connect("prompt_to_messages.messages", "llm.messages")
 
-    def summarize_chunks(self, documents: list[Document], *, max_chunks: int = 5) -> str:
-        if not documents:
-            return "Не удалось выделить содержание файла."
-
+    def summarize_chunks(self, documents: list[Document], *, max_chunks: int = 5) -> str | None:
         sample: list[Document] = []
-        for doc in documents[:max_chunks]:
-            content = (doc.content or "")[:1200]
-            sample.append(Document(content=content, meta=doc.meta))
+        for doc in documents:
+            if len(sample) >= max_chunks:
+                break
+            meta = doc.meta or {}
+            content = (doc.content or meta.get("text") or "").strip()
+            if not content:
+                continue
+            sample.append(Document(content=content[:1200], meta=meta))
+
+        if not sample:
+            return None
 
         result = self._pipeline.run({"prompt_builder": {"documents": sample}})
         replies = result.get("llm", {}).get("replies") or []

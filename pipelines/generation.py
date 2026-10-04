@@ -84,12 +84,19 @@ class GenerationPipeline:
             }
         )
 
-    def retrieve_documents(self, *, user_id: int, query: str, top_k: int | None = None) -> list:
+    def retrieve_documents(
+        self,
+        *,
+        user_id: int,
+        query: str,
+        top_k: int | None = None,
+        file_name: str | None = None,
+    ) -> list:
         k = top_k if top_k is not None else self._top_k
         embedding = self._text_embedder.run(text=query)["embedding"]
         result = self._retriever.run(
             query_embedding=embedding,
-            filters=document_chunks_filter(user_id),
+            filters=document_chunks_filter(user_id, file_name=file_name),
             top_k=k,
         )
         return list(result.get("documents") or [])

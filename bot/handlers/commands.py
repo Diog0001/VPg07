@@ -41,6 +41,7 @@ def register(bot: telebot.TeleBot) -> None:
 
             Команды:
             /memory — что я помню о тебе и сколько фрагментов файлов сохранено
+            /files — выбрать, по какому загруженному файлу отвечать
             /forget — удалить твою память и загруженные фрагменты документов
             /reset — очистить текущую сессию диалога
             /help — справка
@@ -81,9 +82,11 @@ def register(bot: telebot.TeleBot) -> None:
         user_id = message.from_user.id
         try:
             memory.delete_user_memory(user_id)
+            from bot.document_focus import clear_user_files
             from bot.session import reset_session
 
             reset_session(user_id)
+            clear_user_files(user_id)
             bot.send_message(
                 message.chat.id,
                 "Готово: память о тебе и все сохранённые фрагменты загруженных файлов удалены из Pinecone.",
