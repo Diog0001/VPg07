@@ -1,0 +1,39 @@
+# Секреты и локальная конфигурация
+.env
+.env.local
+.env.*.local
+
+# Виртуальные окружения
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Блокировка второго экземпляра бота
+.bot.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Логи и временные файлы
+*.log
+.cache/
+
+# Устаревшие копии (если остались локально)
+example/
+hay_v2_bot/
+legacy/
